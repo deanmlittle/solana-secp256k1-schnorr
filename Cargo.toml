@@ -1,0 +1,24 @@
+[package]
+name = "solana-secp256k1-schnorr"
+description = "Secp256k1 Schnorr signatures in SVM"
+authors = ["Dean Little <@deanmlittle>"]
+version = "0.1.0"
+edition = "2021"
+
+[features]
+bip340 = []
+keccak256 = []
+sha256 = []
+
+default = ["bip340", "keccak256", "sha256"]
+
+[lib]
+
+[dependencies]
+solana-program = "^2.0.0"
+thiserror = "1.0.52"
+crypto-bigint = "0.5.5"
+k256 = { version = "0.10.4", default-features = false, features = ["arithmetic"] }
+
+[dev-dependencies]
+hex = "0.4.3"
