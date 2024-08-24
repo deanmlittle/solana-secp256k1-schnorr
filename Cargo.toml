@@ -4,6 +4,7 @@ description = "Secp256k1 Schnorr signatures in SVM"
 authors = ["Dean Little <@deanmlittle>"]
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 [features]
 bip340 = []
