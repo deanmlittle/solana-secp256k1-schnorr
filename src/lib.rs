@@ -18,8 +18,9 @@ impl Secp256k1SchnorrSignature {
         0xfe, 0xba, 0xae, 0xdc, 0xe6, 0xaf, 0x48, 0xa0, 0x3b, 0xbf, 0xd2, 0x5e, 0x8c, 0xd0, 0x36,
         0x41, 0x41,
     ];
-
     pub const Q: U256 = U256::from_be_slice(&Self::N);
+
+    pub fn new(signature: [u8; SECP256K1_SCHNORR_SIGNATURE_LENGTH]) -> Self { Self(signature) }
 
     pub fn r(&self) -> [u8; 32] {
         [
@@ -44,7 +45,7 @@ impl Secp256k1SchnorrSignature {
     pub fn verify<C: Secp256k1SchnorrChallenge>(
         &self,
         message: &[u8],
-        pubkey: &[u8; SECP256K1_SCHNORR_COMPRESSED_PUBLIC_KEY_LENGTH]
+        pubkey: &[u8; SECP256K1_SCHNORR_COMPRESSED_PUBLIC_KEY_LENGTH],
     ) -> Result<(), Secp256k1SchnorrVerifyError> {
         // Calculate challenge from pubkey and message:
         let e = C::challenge(&self.r(), pubkey, message);
@@ -74,7 +75,7 @@ impl Secp256k1SchnorrSignature {
         let parity = match pubkey[0] {
             2 => 0,
             3 => 1,
-            _ => return Err(Secp256k1SchnorrVerifyError::InvalidRecoveryId)
+            _ => return Err(Secp256k1SchnorrVerifyError::InvalidRecoveryId),
         };
 
         let r = secp256k1_recover(&m.to_be_bytes(), parity, &r_s)
@@ -88,20 +89,22 @@ impl Secp256k1SchnorrSignature {
     }
 
     pub fn mulmod(a: &U256, b: &U256) -> U256 {
-        let modulus = NonZero::<U512>::new(U512::from(
-            &U256::from_be_slice(&Self::N).mul(&U256::from_u8(1)),
-        ))
-        .unwrap();
+        let modulus =
+            NonZero::<U512>::new(U512::from(&U256::from_be_slice(&Self::N).mul(&U256::from_u8(1))))
+                .unwrap();
         let mut x = [0u8; 32];
         x.clone_from_slice(
-            &U512::from_be_slice(&a.mul(&b).to_be_bytes())
-                .rem(&modulus)
-                .to_be_bytes()[32..],
+            &U512::from_be_slice(&a.mul(&b).to_be_bytes()).rem(&modulus).to_be_bytes()[32..],
         );
         U256::from_be_slice(&x)
     }
 }
 
+impl From<[u8; SECP256K1_SCHNORR_SIGNATURE_LENGTH]> for Secp256k1SchnorrSignature {
+    fn from(signature: [u8; SECP256K1_SCHNORR_SIGNATURE_LENGTH]) -> Self { Self(signature) }
+}
+
 pub trait Secp256k1SchnorrChallenge: Sized {
     fn challenge(r: &[u8; 32], pubkey: &[u8], message: &[u8]) -> [u8; 32];
 }
+
