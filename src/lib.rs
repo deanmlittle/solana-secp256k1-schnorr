@@ -4,9 +4,10 @@ pub mod errors;
 mod tests;
 
 use challenges::{Secp256k1SchnorrSign, Secp256k1SchnorrVerify};
+use dashu::integer::UBig;
 use errors::Secp256k1SchnorrError;
 use solana_nostd_secp256k1_recover::secp256k1_recover;
-use solana_secp256k1::{Curve, Secp256k1Point};
+use solana_secp256k1::{Curve, Secp256k1Point, UncompressedPoint};
 
 pub const SECP256K1_SCHNORR_SIGNATURE_LENGTH: usize = 64;
 
@@ -90,5 +91,31 @@ impl Secp256k1SchnorrSignature {
             return Err(Secp256k1SchnorrError::InvalidSignature);
         }
         Ok(())
+    }
+}
+
+impl Secp256k1SchnorrSignature {
+    pub fn sign<C: Secp256k1SchnorrSign>(
+        message: &[u8],
+        privkey: &[u8;32],
+    ) -> Result<Secp256k1SchnorrSignature, Secp256k1SchnorrError> {
+        // aux represents the tagged-sha256 hash of our auxiliary randomness. In our default signing, this will be zero.
+        let aux = C::aux_randomness(privkey, &[0u8; 32]);
+
+        // p is the X-only public key of our Privkey
+        let pubkey = Curve::mul_g(privkey).map_err(|_| Secp256k1SchnorrError::InvalidPublicKey)?;
+
+        // k is our ephemeral key
+        let (k, r) = C::nonce::<UncompressedPoint>(&pubkey, &message, &aux)?;
+
+        // e is the challenge message
+        let e = C::challenge(&r.x(), &pubkey, message);
+
+        let s = (UBig::from_be_bytes(&k) + UBig::from_be_bytes(&e) * UBig::from_be_bytes(privkey)) % UBig::from_be_bytes(&Curve::N);
+
+        let mut sig_bytes = [0; 64];
+        sig_bytes[..32].clone_from_slice(&r.x());
+        sig_bytes[32..].clone_from_slice(&s.to_be_bytes());
+        Ok(Secp256k1SchnorrSignature(sig_bytes))
     }
 }

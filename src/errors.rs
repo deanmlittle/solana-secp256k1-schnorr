@@ -4,5 +4,6 @@ pub enum Secp256k1SchnorrError {
     InvalidPublicKey = 2,
     InvalidRecoveryId = 3,
     InvalidSignature = 4,
-    ArithmeticOverflow = 5,
+    InvalidNonce = 5,
+    ArithmeticOverflow = 6,
 }
