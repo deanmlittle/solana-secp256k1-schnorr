@@ -2,7 +2,7 @@
 name = "solana-secp256k1-schnorr"
 description = "Secp256k1 Schnorr signatures in SVM"
 authors = ["Dean Little <@deanmlittle>"]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 license = "MIT"
 
