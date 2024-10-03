@@ -1,26 +1,45 @@
-use crypto_bigint::{CheckedSub, Encoding, NonZero, U256, U512};
-use errors::Secp256k1SchnorrVerifyError;
-use solana_program::secp256k1_recover::secp256k1_recover;
-
 pub mod challenges;
 pub mod errors;
-
 #[cfg(test)]
 mod tests;
 
+use challenges::{Secp256k1SchnorrSign, Secp256k1SchnorrVerify};
+use errors::Secp256k1SchnorrError;
+use solana_nostd_secp256k1_recover::secp256k1_recover;
+use solana_secp256k1::{Curve, Secp256k1Point};
+
 pub const SECP256K1_SCHNORR_SIGNATURE_LENGTH: usize = 64;
-pub const SECP256K1_SCHNORR_COMPRESSED_PUBLIC_KEY_LENGTH: usize = 33;
-pub struct Secp256k1SchnorrSignature([u8; SECP256K1_SCHNORR_SIGNATURE_LENGTH]);
+
+/// # Secp256k1SchnorrSignature
+/// A Schnorr signature used for signature verification purposes. It has two specific builds targets.
+///
+/// There are 3 main functions that it performs:
+///
+/// 1. Sign - Signs a messages with a private key and optional auxiliary randomness.
+/// 2. Verify - Verifies a Schnorr signature against an arbitrary message and a 33-byte compressed secp256k1 public key.
+/// 3. Point from Scalar - Creates a public key from a private key scalar
+///
+/// ### Sign
+/// This function requires a valid implementation of the Secp256k1SchnorrChallenge + Secp256k1SchnorrNonce traits.
+///
+/// As it is impractical and serves no real purpose, this method is omitted from Solana build targets.
+///
+/// As such, signing utilizes `k256 v0.10.4` under the hood for its compatible with the current dependency tree of solana-program, as well as with a handful of WebAssembly and other useful build targets.
+///
+/// ### Verify
+/// Verify requires a valid implementation of the trait Secp256k1SchnorrChallenge and has two separate implementations based upon build target:
+///
+/// **Non-Solana:** As with the sign function, verify uses k256 under the hood for the same reasons mentioned above.
+///
+/// **Solana:** When building for Solana, the verify function uses an SVM-specific variant that abuses the ability of the `secp256k1_ecrecover` syscall to perform efficient elliptic curve multiplication over the secp256k1 curve to perform Schnorr signature verification.
+///
+/// In this variant, instead of recovering R from an ecdsa signature, it recovers the X coordinate of a public key. As such, instead of the `recovery_id` referring to the Y coordinary of the `nonce` of an ecdsa signature being odd or even, it refers to the Y coordinate of the public key of the Schnorr signature.
+///
+/// Upon successfully recovering the X coordinate of the public key, it then performs a comparison to the inputted public key to ensure successful verification.
+
+pub struct Secp256k1SchnorrSignature(pub [u8; SECP256K1_SCHNORR_SIGNATURE_LENGTH]);
 
 impl Secp256k1SchnorrSignature {
-    pub const N: [u8; 32] = [
-        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-        0xfe, 0xba, 0xae, 0xdc, 0xe6, 0xaf, 0x48, 0xa0, 0x3b, 0xbf, 0xd2, 0x5e, 0x8c, 0xd0, 0x36,
-        0x41, 0x41,
-    ];
-
-    pub const Q: U256 = U256::from_be_slice(&Self::N);
-
     pub fn r(&self) -> [u8; 32] {
         [
             self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5], self.0[6], self.0[7],
@@ -40,68 +59,36 @@ impl Secp256k1SchnorrSignature {
             self.0[60], self.0[61], self.0[62], self.0[63],
         ]
     }
+}
 
-    pub fn verify<C: Secp256k1SchnorrChallenge>(
+impl Secp256k1SchnorrSignature {
+    pub fn verify<C: Secp256k1SchnorrVerify, T: Secp256k1Point>(
         &self,
         message: &[u8],
-        pubkey: &[u8; SECP256K1_SCHNORR_COMPRESSED_PUBLIC_KEY_LENGTH]
-    ) -> Result<(), Secp256k1SchnorrVerifyError> {
+        pubkey: &T,
+    ) -> Result<(), Secp256k1SchnorrError> {
         // Calculate challenge from pubkey and message:
         let e = C::challenge(&self.r(), pubkey, message);
-
-        // ecrecover = (m, v, r, s);
-        let x_u256 = U256::from_be_slice(&pubkey[1..]);
-        let e_u256 = U256::from_be_slice(&e);
-        let s_u256 = U256::from_be_slice(&self.s());
-
         // m = -s*Px
-        let m = Option::<U256>::from(Self::Q.checked_sub(&Self::mulmod(&s_u256, &x_u256)))
-            .ok_or(Secp256k1SchnorrVerifyError::ArithmeticOverflow)?;
+        let m = Curve::negate_n(&Curve::mul_mod_n(&self.s(), &pubkey.x()));
         // s = -e*Px
-        let s = Option::<U256>::from(Self::Q.checked_sub(&Self::mulmod(&e_u256, &x_u256)))
-            .ok_or(Secp256k1SchnorrVerifyError::ArithmeticOverflow)?
-            .to_be_bytes();
+        let s = Curve::negate_n(&Curve::mul_mod_n(&e, &pubkey.x()));
 
         // R and S are made up of Px and and -e*Px
         let mut r_s = [0u8; 64];
-        r_s[..32].clone_from_slice(&pubkey[1..]);
+        r_s[..32].clone_from_slice(&pubkey.x());
         r_s[32..].clone_from_slice(&s);
 
-        if m.eq(&U256::from_u8(0)) {
-            return Err(Secp256k1SchnorrVerifyError::InvalidSignature);
+        if m.eq(&[0u8; 32]) {
+            return Err(Secp256k1SchnorrError::InvalidSignature);
         }
 
-        let parity = match pubkey[0] {
-            2 => 0,
-            3 => 1,
-            _ => return Err(Secp256k1SchnorrVerifyError::InvalidRecoveryId)
-        };
+        let r = secp256k1_recover(&m, pubkey.is_odd(), &r_s)
+            .map_err(|_| Secp256k1SchnorrError::InvalidSignature)?;
 
-        let r = secp256k1_recover(&m.to_be_bytes(), parity, &r_s)
-            .map_err(|_| Secp256k1SchnorrVerifyError::InvalidSignature)?;
-
-        if self.r().ne(&r.0[..32]) {
-            return Err(Secp256k1SchnorrVerifyError::InvalidSignature);
+        if self.r().ne(&r[..32]) {
+            return Err(Secp256k1SchnorrError::InvalidSignature);
         }
-
         Ok(())
     }
-
-    pub fn mulmod(a: &U256, b: &U256) -> U256 {
-        let modulus = NonZero::<U512>::new(U512::from(
-            &U256::from_be_slice(&Self::N).mul(&U256::from_u8(1)),
-        ))
-        .unwrap();
-        let mut x = [0u8; 32];
-        x.clone_from_slice(
-            &U512::from_be_slice(&a.mul(&b).to_be_bytes())
-                .rem(&modulus)
-                .to_be_bytes()[32..],
-        );
-        U256::from_be_slice(&x)
-    }
-}
-
-pub trait Secp256k1SchnorrChallenge: Sized {
-    fn challenge(r: &[u8; 32], pubkey: &[u8], message: &[u8]) -> [u8; 32];
 }

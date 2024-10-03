@@ -1,13 +1,27 @@
 use crate::*;
 
-use solana_program::hash::hash;
+use solana_nostd_sha256::hashv;
 pub struct Sha256Challenge;
 
-impl Secp256k1SchnorrChallenge for Sha256Challenge {
-    fn challenge(r: &[u8; 32], pubkey: &[u8], message: &[u8]) -> [u8; 32] {
+impl Secp256k1SchnorrVerify for Sha256Challenge {
+    fn challenge<T: Secp256k1Point>(r: &[u8; 32], pubkey: &T, message: &[u8]) -> [u8; 32] {
         let mut m = r.to_vec();
-        m.extend_from_slice(&pubkey[1..]);
+        m.extend_from_slice(&pubkey.x());
         m.extend_from_slice(message);
-        hash(&m).to_bytes()
+        hashv(&[r.as_ref(), &pubkey.x(), message])
+    }
+}
+
+impl Secp256k1SchnorrSign for Sha256Challenge {
+    fn aux_randomness(secret_key: &[u8; 32], aux: &[u8; 32]) -> [u8; 32] {
+        let mut t = hashv(&[aux]);
+        for (a, b) in t.iter_mut().zip(secret_key.iter()) {
+            *a ^= b
+        }
+        t
+    }
+
+    fn nonce<T: Secp256k1Point>(pubkey: &T, message: &[u8], aux: &[u8; 32]) -> [u8; 32] {
+        hashv(&[aux, pubkey.x().as_ref(), message])
     }
 }
