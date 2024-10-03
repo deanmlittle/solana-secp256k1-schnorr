@@ -1,4 +1,4 @@
-use solana_secp256k1::{Secp256k1Error, Secp256k1Point, UncompressedPoint};
+use solana_secp256k1::{Secp256k1Point, UncompressedPoint};
 
 use crate::errors::Secp256k1SchnorrError;
 
@@ -35,7 +35,11 @@ pub trait Secp256k1SchnorrVerify: Sized {
 /// Failure to take these precautions into consideration will likely result in your private key being leaked through a common nonce reuse attack.
 pub trait Secp256k1SchnorrSign: Sized + Secp256k1SchnorrVerify {
     fn aux_randomness(privkey: &[u8; 32], aux: &[u8; 32]) -> [u8; 32];
-    fn nonce<T: Secp256k1Point>(pubkey: &T, message: &[u8], aux: &[u8; 32]) -> Result<([u8; 32], UncompressedPoint), Secp256k1SchnorrError>;
+    fn nonce<T: Secp256k1Point>(
+        pubkey: &T,
+        message: &[u8],
+        aux: &[u8; 32],
+    ) -> Result<([u8; 32], UncompressedPoint), Secp256k1SchnorrError>;
 }
 
 #[cfg(feature = "bip340")]
