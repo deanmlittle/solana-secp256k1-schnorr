@@ -26,13 +26,15 @@ pub struct BIP340Challenge;
 
 impl Secp256k1SchnorrVerify for BIP340Challenge {
     fn challenge<T: Secp256k1Point>(r: &[u8; 32], pubkey: &T, message: &[u8]) -> [u8; 32] {
-        hashv(&[
+        let h = hashv(&[
             BIP0340_CHALLENGE.as_ref(),
             BIP0340_CHALLENGE.as_ref(),
             r.as_ref(),
             pubkey.x().as_ref(),
             message,
-        ])
+        ]); 
+        println!("{}", hex::encode(&h));
+        h
     }
 }
 

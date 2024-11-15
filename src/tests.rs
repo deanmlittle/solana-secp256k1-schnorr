@@ -40,7 +40,7 @@ fn test_signature_generation_bip340() {
     ];
 
     let schnorr_signature =
-        Secp256k1SchnorrSignature::sign::<BIP340Challenge>(message.as_slice(), &privkey)
+        Secp256k1SchnorrSignature::sign::<BIP340Challenge>(message.as_ref(), &privkey)
             .expect("Invalid signature");
     assert_eq!(
         schnorr_signature.0,
