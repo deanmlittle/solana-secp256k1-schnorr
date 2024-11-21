@@ -1,8 +1,7 @@
-use crate::*;
-
 use challenges::{Secp256k1SchnorrSign, Secp256k1SchnorrVerify};
-
 use solana_nostd_sha256::hashv;
+
+use crate::*;
 
 // sha256(BIP0340/challenge) tagged hash
 const BIP0340_CHALLENGE: [u8; 32] = [
@@ -26,15 +25,13 @@ pub struct BIP340Challenge;
 
 impl Secp256k1SchnorrVerify for BIP340Challenge {
     fn challenge<T: Secp256k1Point>(r: &[u8; 32], pubkey: &T, message: &[u8]) -> [u8; 32] {
-        let h = hashv(&[
+        hashv(&[
             BIP0340_CHALLENGE.as_ref(),
             BIP0340_CHALLENGE.as_ref(),
             r.as_ref(),
             pubkey.x().as_ref(),
             message,
-        ]); 
-        println!("{}", hex::encode(&h));
-        h
+        ])
     }
 }
 
