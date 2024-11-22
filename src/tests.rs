@@ -1,4 +1,4 @@
-use solana_secp256k1::CompressedPoint;
+use solana_secp256k1::{CompressedPoint, Curve, UncompressedPoint};
 
 use crate::{
     challenges::{bip340::BIP340Challenge, keccak256::Keccak256Challenge, sha256::Sha256Challenge},
